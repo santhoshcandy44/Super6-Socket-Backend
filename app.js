@@ -23,9 +23,8 @@ const { awsS3Bucket } = require('./config/awsS3')
 
 
 
-const path = require('path');
 
-const filePath = path.join('/mnt/ebs', 'example.txt');
+const filePath = path.join(MEDIA_ROOT_PATH, 'example.txt');
 
 fs.writeFile(filePath, 'Hello from Node.js!', (err) => {
   if (err) {
