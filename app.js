@@ -390,7 +390,7 @@ io.on('connection', (socket) => {
             const query = 'SELECT encrypted_public_key, key_version FROM e2ee_public_keys WHERE user_id = ?';
 
             // Check recipient's account status
-            const [accountStatusRows] = await promise.query('SELECT account_status FROM USERS WHERE user_id = ?', [recipient_id]);
+            const [accountStatusRows] = await promise.query('SELECT account_status FROM users WHERE user_id = ?', [recipient_id]);
 
             if (accountStatusRows.length > 0 && accountStatusRows[0].account_status === 'deactivated') {
                 callback("User is not authenticated", { status: "USER_NOT_ACTIVE_ERROR", recipient_id });
@@ -542,7 +542,7 @@ io.on('connection', (socket) => {
 
 
             // Check if the recipient is active
-            const [rows] = await promise.query('SELECT account_status FROM USERS WHERE user_id = ?', [recipient_id]);
+            const [rows] = await promise.query('SELECT account_status FROM users WHERE user_id = ?', [recipient_id]);
 
             if (rows.length > 0 && rows[0].account_status === 'deactivated') {
                 callback({ status: "USER_NOT_ACTIVE_ERROR", recipient_id });
@@ -925,7 +925,7 @@ VALUES (?, ?, ?, ?);`;
 
 
             // Check if the recipient is active
-            const [rows] = await promise.query('SELECT account_status FROM USERS WHERE user_id = ?', [recipient_id]);
+            const [rows] = await promise.query('SELECT account_status FROM users WHERE user_id = ?', [recipient_id]);
 
             if (rows.length > 0 && rows[0].account_status === 'deactivated') {
                 callback({ status: "USER_NOT_ACTIVE_ERROR", recipient_id });
