@@ -507,7 +507,7 @@ io.on('connection', (socket) => {
 
 
 
-    const CHUNK_SIZE = 5 * 1024 * 1024;  // 5MB in bytes
+    const CHUNK_SIZE = 1 * 1024 * 1024;  // 5MB in bytes
 
 
     // Handle the start of file transfer
@@ -567,163 +567,99 @@ io.on('connection', (socket) => {
 
             const parsedFileName = path.parse(file_name); // This will break the filename into parts (name, ext, etc.)
 
-            const s3Key = `uploads/${recipient_id}/${file_id}_${parsedFileName.name}.enc`; // S3 object key
-
-
-            const getUploadIdQuery = 'SELECT upload_id FROM upload_metadata WHERE sender_id = ? AND recipient_id = ? AND message_id = ?';
-            const [uploadMetaDataRow] = await promise.query(getUploadIdQuery, [sender_id, recipient_id, message_id]);
-
-
-
-            let uploadId = "";
-
-            if (uploadMetaDataRow && uploadMetaDataRow.length > 0) {
-                uploadId = uploadMetaDataRow[0].upload_id || ""; // If upload_id exists, use it; otherwise, use an empty string
-            }
+            const dirPath = path.join(MEDIA_ROOT_PATH, `uploads`, recipient_id.toString()); // ✅ Correct file path
+            const mediaPath = path.join(dirPath, `${file_id}_${parsedFileName.name}.enc`); // ✅ Correct file path
 
 
 
 
-            try {
-                // Check if the file exists using getObject
-                const getObjectParams = {
-                    Bucket: S3_BUCKET_NAME,
-                    Key: s3Key,
+            if (fs.existsSync(mediaPath)) {
+
+
+                const stats = fs.statSync(mediaPath);
+
+                // If file exists, get the size and check if the upload is complete
+                const receivedPartsLength = stats.size;
+
+
+
+                if (receivedPartsLength == file_size) {
+
+                    socket.emit(`chat:fileTransferCompleted-${file_id}`, {
+                        delivered_at: new Date(),
+                        message_id,
+                        status: "ALL_CHUNKS_RECEIVED_FILE_TRANSFER_COMPLETED"
+                    });
+
+                    console.log("Done");
+                    return
+                }
+
+
+
+                const byteOffset = Math.min(byte_offset, receivedPartsLength); // Resume from the correct byte offset
+
+                const receivedChunks = Math.floor((byteOffset + (CHUNK_SIZE) - 1) / (CHUNK_SIZE)); // Calculate received chunks
+
+
+                // Initialize the file transfer in progress
+                fileTransfers[file_id] = {
+                    senderId: sender_id,
+                    recipientId: recipient_id,
+                    messageId: message_id,
+                    replyId: reply_id,
+                    type,
+                    category,
+                    contentType: content_type,
+                    message,
+                    originalFileName: file_name,
+                    fileSize: file_size,
+                    fileExtension: extension,
+                    width,
+                    height,
+                    totalDuration: total_duration,
+                    totalChunks: total_chunks,
+                    receivedChunks: receivedChunks,
+                    keyVersion: key_version,
+                    filePath: mediaPath,
+
+
                 };
 
-                const objectMetadata = await awsS3Bucket.headObject(getObjectParams).promise();
-                console.log("File already uploaded.");
 
-                socket.emit(`chat:fileTransferCompleted-${file_id}`, {
-                    delivered_at: new Date(),
+                callback({ status: "Success" });
+
+
+            } else {
+
+
+                fs.mkdirSync(dirPath, { recursive: true });
+
+                // Initialize the file transfer in progress
+                fileTransfers[file_id] = {
+                    senderId: sender_id,
+                    recipientId: recipient_id,
                     messageId: message_id,
-                    status: "ALL_CHUNKS_RECEIVED_FILE_TRANSFER_COMPLETED",
-                });
-                return;
+                    replyId: reply_id,
+                    type,
+                    category,
+                    contentType: content_type,
+                    message,
+                    originalFileName: file_name,
+                    fileSize: file_size,
+                    fileExtension: extension,
+                    width,
+                    height,
+                    totalDuration: total_duration,
+                    totalChunks: total_chunks,
+                    receivedChunks: 0,
+                    keyVersion: key_version,
+                    filePath: mediaPath,
 
-            } catch (error) {
-                if (error.code === 'NotFound') {
+                };
 
-                    try {
+                callback({ status: "Success" });
 
-
-                        const listPartsParams = {
-                            Bucket: S3_BUCKET_NAME,
-                            Key: s3Key,
-                            UploadId: uploadId
-                        };
-
-                        const listPartsResult = await awsS3Bucket.listParts(listPartsParams).promise();
-
-
-
-                        // If file exists, get the size and check if the upload is complete
-                        const receivedPartsLength = listPartsResult.Parts.length;
-
-                        const byteOffset = Math.min(byte_offset, receivedPartsLength); // Resume from the correct byte offset
-
-                        const receivedChunks = Math.floor((byteOffset + (CHUNK_SIZE) - 1) / (CHUNK_SIZE)); // Calculate received chunks
-
-                        if (receivedPartsLength === file_size) {
-                            console.log("File already uploaded with the correct size.");
-                            socket.emit(`chat:fileTransferCompleted-${file_id}`, {
-                                delivered_at: new Date(),
-                                messageId: message_id,
-                                status: "ALL_CHUNKS_RECEIVED_FILE_TRANSFER_COMPLETED",
-                            });
-                            return;
-                        }
-
-
-                        // Initialize the file transfer in progress
-                        fileTransfers[file_id] = {
-                            senderId: sender_id,
-                            recipientId: recipient_id,
-                            messageId: message_id,
-                            replyId: reply_id,
-                            type,
-                            category,
-                            contentType: content_type,
-                            message,
-                            originalFileName: file_name,
-                            fileSize: file_size,
-                            fileExtension: extension,
-                            width,
-                            height,
-                            totalDuration: total_duration,
-                            totalChunks: total_chunks,
-                            receivedChunks: receivedChunks,
-                            keyVersion: key_version,
-                            s3Key: s3Key,
-                            uploadId: uploadId, // The upload ID to resume
-                            uploadedParts: listPartsResult.Parts.map(part => ({
-                                PartNumber: part.PartNumber,
-                                ETag: part.ETag,
-                            }))
-
-                        };
-
-
-                        callback({ stattus: "Success" });
-                        // If file size doesn't match, resume upload or handle accordingly
-                        console.log("File exists but size mismatch. Resuming upload...");
-
-                    } catch (err) {
-                        if (err.code === "NoSuchUpload") {
-
-
-                            // Start a new multipart upload
-                            const createMultipartParams = {
-                                Bucket: S3_BUCKET_NAME,
-                                Key: s3Key
-                            };
-
-                            const multipartUpload = await awsS3Bucket.createMultipartUpload(createMultipartParams).promise();
-
-
-                            console.log("NoSuchUpload insering..");
-
-                            const insertUploadMetadataQuery = `INSERT IGNORE INTO upload_metadata (sender_id, recipient_id, message_id, upload_id)
-VALUES (?, ?, ?, ?);`;
-
-                            await promise.query(insertUploadMetadataQuery, [sender_id, recipient_id, message_id, multipartUpload.UploadId]);
-
-
-
-                            // New transfer, start from the beginning
-                            fileTransfers[file_id] = {
-                                senderId: sender_id,
-                                recipientId: recipient_id,
-                                messageId: message_id,
-                                replyId: reply_id,
-                                type,
-                                category,
-                                contentType: content_type,
-                                message,
-                                originalFileName: file_name,
-                                fileSize: file_size,
-                                fileExtension: extension,
-                                width,
-                                height,
-                                totalDuration: total_duration,
-                                totalChunks: total_chunks,
-                                receivedChunks: 0,
-                                keyVersion: key_version,
-                                s3Key: s3Key,
-                                uploadId: multipartUpload.UploadId, // Save the upload ID
-                                uploadedParts: []
-
-                            };
-
-                            callback({ stattus: "Success" });
-                        } else {
-                            throw err
-                        }
-                    }
-
-                } else {
-                    console.error("Error checking file:", error.message);
-                }
             }
 
 
@@ -754,135 +690,73 @@ VALUES (?, ?, ?, ?);`;
             }
 
             const {
-                senderId,
-                recipientId,
                 messageId,
-                replyId,
-                category,
-                contentType,
-                type,
-                message,
-                originalFileName,
                 filePath,
-                fileExtension,
-                width,
-                height,
-                totalDuration,
-                keyVersion
             } = fileTransfer;
-
 
 
             const buffer = Buffer.from(data, 'binary');
 
 
-            // Upload the chunk to S3 as a part of the multipart upload
-            const uploadPartParams = {
-                Bucket: S3_BUCKET_NAME,
-                Key: fileTransfer.s3Key,
-                PartNumber: chunk_index + 1, // PartNumber starts from 1 for S3
-                UploadId: fileTransfer.uploadId,
-                Body: buffer,
-            };
+
+            const writeStream = fs.createWriteStream(filePath, {
+                flags: 'a+',   // Open the file for reading and writing
+                start: byte_offset  // Specify the position where to start writing
+            });
+
+            // Write the buffer data to the file
+            writeStream.write(buffer, (err) => {
+                if (err) {
+                    callback('Unexpected error occurred', { error: true, status: "FILE_WRITING_ERROR" });
+
+                    console.error("Error writing to file:", err);
+                } else {
+                    console.log(`Data successfully written at offset`);
 
 
-            // Upload the chunk part to S3
-            const uploadPartResponse = await awsS3Bucket.uploadPart(uploadPartParams).promise();
+                    // Get updated file size
+                    const totalUploadedSize = fs.statSync(filePath).size;
 
 
-            // Track the part and its ETag
-            fileTransfer.uploadedParts.push({
-                PartNumber: chunk_index + 1,
-                ETag: uploadPartResponse.ETag,
+                    socket.emit(`chat:mediaChunkAck-${file_id}-${chunk_index}`, {
+                        delivered_at: new Date(),
+                        messageId,
+                        fileId: file_id,
+                        chunkIndex: chunk_index,
+                        updatedSize: totalUploadedSize,
+                    });
+
+                    // Update receivedChunks count
+                    fileTransfer.receivedChunks++;
+
+
+                    // Check if all chunks are received
+                    if (fileTransfer.receivedChunks === fileTransfer.totalChunks) {
+                        // End the stream
+                        writeStream.end();
+                        console.log('Upload completed successfully:');
+
+
+                        socket.emit(`chat:fileTransferCompleted-${file_id}`, {
+                            delivered_at: new Date(),
+                            messageId,
+                            status: "FILE_TRANSFER_COMPLETED"
+                        });
+
+                        // Clean up transfer state
+                        delete fileTransfers[file_id];
+
+                    }
+
+                }
+
             });
 
 
 
-
-            const listPartsParams = {
-                Bucket: S3_BUCKET_NAME,
-                Key: fileTransfer.s3Key,
-                UploadId: fileTransfer.uploadId
-            };
-
-            const listPartsResult = await awsS3Bucket.listParts(listPartsParams).promise();
-
-
-            // Initialize total size
-            let totalUploadedSize = 0;
-
-            // Sum the sizes of the uploaded parts
-            listPartsResult.Parts.forEach(part => {
-                totalUploadedSize += part.Size; // Each part has a 'Size' field that indicates its size in bytes
-            });
-
-
-
-            const totalWrittenSize = totalUploadedSize; // Get the updated file size from S3
-
-            socket.emit(`chat:mediaChunkAck-${file_id}-${chunk_index}`, {
-                delivered_at: new Date(),
-                messageId,
-                fileId: file_id,
-                chunkIndex: chunk_index,
-                updatedSize: totalWrittenSize,
-            });
-
-            // Update receivedChunks count
-            fileTransfer.receivedChunks++;
-
-
-            // Check if all chunks are received
-            if (fileTransfer.receivedChunks === fileTransfer.totalChunks) {
-
-                // Sort parts by PartNumber (to avoid the InvalidPartOrder error)
-                fileTransfer.uploadedParts.sort((a, b) => a.PartNumber - b.PartNumber);
-
-                // Sum the sizes of the uploaded parts
-                listPartsResult.Parts.forEach(part => {
-                    totalUploadedSize += part.Size; // Each part has a 'Size' field that indicates its size in bytes
-                });
-
-
-                // All parts uploaded, now complete the multipart upload
-                const completeParams = {
-                    Bucket: S3_BUCKET_NAME,
-                    Key: fileTransfer.s3Key,
-                    UploadId: fileTransfer.uploadId,
-                    MultipartUpload: {
-                        Parts: fileTransfer.uploadedParts,
-                    },
-                };
-
-                
-                // Complete the upload
-                const completeUploadResponse = await awsS3Bucket.completeMultipartUpload(completeParams).promise();
-
-                console.log('Upload completed successfully:', fileTransfer.uploadId);
-
-
-                socket.emit(`chat:fileTransferCompleted-${file_id}`, {
-                    delivered_at: new Date(),
-                    messageId,
-                    status: "FILE_TRANSFER_COMPLETED"
-                });
-
-
-                const deleteUploadMetadataQuery = `
-                    DELETE FROM upload_metadata
-                   WHERE sender_id = ? AND recipient_id = ? AND message_id = ?
-                    `;
-
-                await promise.query(deleteUploadMetadataQuery, [senderId, recipientId, messageId]);
-
-                // Clean up transfer state
-                delete fileTransfers[file_id];
-
-            }
         } catch (err) {
 
             console.log(err);
-            console.log(fileTransfer.uploadId);
             logMessage('Unexpected error: ' + err.message);
             callback('Unexpected error occurred', { status: "UNKNOWN_ERROR" });
         }
@@ -951,164 +825,101 @@ VALUES (?, ?, ?, ?);`;
 
 
             const parsedFileName = path.parse(file_name); // This will break the filename into parts (name, ext, etc.)
-            const originalFileS3Key = `uploads/${recipient_id}/${file_id}_${parsedFileName.name}.enc`; // S3 object key
-            const s3Key = `uploads/thumbnails/${recipient_id}/${file_id}_${parsedFileName.name}_thumbnail.enc`; // S3 object key
+
+            const originalFilePath = path.join(MEDIA_ROOT_PATH, "uploads", `${recipient_id}/${file_id}_${parsedFileName.name}.enc` ); // ✅ Correct file path
+
+            const dirPath = path.join(MEDIA_ROOT_PATH, `uploads`, `thumbnails`, recipient_id.toString()); // ✅ Correct file path
+            const mediaPath = path.join(dirPath, `${file_id}_${parsedFileName.name}_thumbnail.enc`); // ✅ Correct file path
 
 
-            const getUploadIdQuery = 'SELECT upload_id FROM upload_metadata WHERE sender_id = ? AND recipient_id = ? AND message_id = ?';
-            const [uploadMetaDataRow] = await promise.query(getUploadIdQuery, [sender_id, recipient_id, message_id]);
 
 
 
-            let uploadId = "";
-
-            if (uploadMetaDataRow && uploadMetaDataRow.length > 0) {
-                uploadId = uploadMetaDataRow[0].upload_id || ""; // If upload_id exists, use it; otherwise, use an empty string
-            }
+            if (fs.existsSync(mediaPath)) {
 
 
-            try {
-                // Check if the file exists using getObject
-                const getObjectParams = {
-                    Bucket: S3_BUCKET_NAME,
-                    Key: s3Key,
+                const stats = fs.statSync(mediaPath);
+
+                // If file exists, get the size and check if the upload is complete
+                const receivedPartsLength = stats.size;
+
+                if (receivedPartsLength == file_size) {
+
+                    socket.emit(`chat:thumbnailTransferCompleted-${file_id}`, {
+                        delivered_at: new Date(),
+                        message_id,
+                        status: "ALL_CHUNKS_RECEIVED_THUMBNAIL_TRANSFER_COMPLETED"
+                    });
+
+                    return
+                }
+
+
+
+                const byteOffset = Math.min(byte_offset, receivedPartsLength); // Resume from the correct byte offset
+
+                const receivedChunks = Math.floor((byteOffset + (CHUNK_SIZE) - 1) / (CHUNK_SIZE)); // Calculate received chunks
+
+
+                // Initialize the file transfer in progress
+                thumbnailTransfers[file_id] = {
+                    senderId: sender_id,
+                    recipientId: recipient_id,
+                    messageId: message_id,
+                    replyId: reply_id,
+                    type,
+                    category,
+                    contentType: content_type,
+                    message,
+                    originalFileName: file_name,
+                    fileSize: file_size,
+                    fileExtension: extension,
+                    width,
+                    height,
+                    totalDuration: total_duration,
+                    totalChunks: total_chunks,
+                    receivedChunks: receivedChunks,
+                    keyVersion: key_version,
+                    filePath: mediaPath,
+
+
                 };
 
-                const objectMetadata = await awsS3Bucket.headObject(getObjectParams).promise();
-                console.log("Thumbnail Already uploaded.");
 
-                socket.emit(`chat:thumbnailTransferCompleted-${file_id}`, {
-                    delivered_at: new Date(),
+                callback({ status: "Success" });
+
+
+            } else {
+
+
+
+                fs.mkdirSync(dirPath, { recursive: true });
+
+                // Initialize the file transfer in progress
+                thumbnailTransfers[file_id] = {
+                    senderId: sender_id,
+                    recipientId: recipient_id,
                     messageId: message_id,
-                    status: "ALL_CHUNKS_RECEIVED_THUMBNAIL_TRANSFER_COMPLETED",
-                });
+                    replyId: reply_id,
+                    type,
+                    category,
+                    contentType: content_type,
+                    message,
+                    originalFileName: file_name,
+                    fileSize: file_size,
+                    fileExtension: extension,
+                    width,
+                    height,
+                    totalDuration: total_duration,
+                    totalChunks: total_chunks,
+                    receivedChunks: 0,
+                    keyVersion: key_version,
+                    originalFilePath,
+                    filePath: mediaPath,
 
-                return;
+                };
 
-            } catch (error) {
-                if (error.code === 'NotFound') {
-
-                    try {
-
-                        const listPartsParams = {
-                            Bucket: S3_BUCKET_NAME,
-                            Key: s3Key,
-                            UploadId: uploadId
-                        };
-
-                        const listPartsResult = await awsS3Bucket.listParts(listPartsParams).promise();
-
-
-
-                        // If file exists, get the size and check if the upload is complete
-                        const receivedPartsLength = listPartsResult.Parts.length;
-
-                        const byteOffset = Math.min(byte_offset, receivedPartsLength); // Resume from the correct byte offset
-
-                        const receivedChunks = Math.floor((byteOffset + (CHUNK_SIZE) - 1) / (CHUNK_SIZE)); // Calculate received chunks
-
-                        if (receivedPartsLength === file_size) {
-                            console.log("File already uploaded with the correct size.");
-                            socket.emit(`chat:thumbnailTransferCompleted-${file_id}`, {
-                                delivered_at: new Date(),
-                                messageId: message_id,
-                                status: "ALL_CHUNKS_RECEIVED_THUMBNAIL_TRANSFER_COMPLETED",
-                            });
-                            return;
-                        }
-
-
-                        // Initialize the file transfer in progress
-                        thumbnailTransfers[file_id] = {
-                            senderId: sender_id,
-                            recipientId: recipient_id,
-                            messageId: message_id,
-                            replyId: reply_id,
-                            type,
-                            category,
-                            contentType: content_type,
-                            message,
-                            originalFileName: file_name,
-                            fileSize: file_size,
-                            fileExtension: extension,
-                            width,
-                            height,
-                            totalDuration: total_duration,
-                            totalChunks: total_chunks,
-                            receivedChunks: receivedChunks,
-                            keyVersion: key_version,
-                            originalFileS3Key,
-                            s3Key: s3Key,
-                            uploadId: uploadId, // The upload ID to resume
-                            uploadedParts: listPartsResult.Parts.map(part => ({
-                                PartNumber: part.PartNumber,
-                                ETag: part.ETag,
-                            }))
-
-                        };
-
-
-                        callback({ status: "Success" });
-                        // If file size doesn't match, resume upload or handle accordingly
-                        console.log("Thumbnail exists but size mismatch. Resuming upload...");
-
-                    } catch (err) {
-                        if (err.code === "NoSuchUpload") {
-
-
-                            // Start a new multipart upload
-                            const createMultipartParams = {
-                                Bucket: S3_BUCKET_NAME,
-                                Key: s3Key
-                            };
-
-                            const multipartUpload = await awsS3Bucket.createMultipartUpload(createMultipartParams).promise();
-
-
-
-                            const insertUploadMetadataQuery = `INSERT IGNORE INTO upload_metadata (sender_id, recipient_id, message_id, upload_id)
-VALUES (?, ?, ?, ?);`;
-
-                            await promise.query(insertUploadMetadataQuery, [sender_id, recipient_id, message_id, multipartUpload.UploadId]);
-
-
-
-                            // New transfer, start from the beginning
-                            thumbnailTransfers[file_id] = {
-                                senderId: sender_id,
-                                recipientId: recipient_id,
-                                messageId: message_id,
-                                replyId: reply_id,
-                                type,
-                                category,
-                                contentType: content_type,
-                                message,
-                                originalFileName: file_name,
-                                fileSize: file_size,
-                                fileExtension: extension,
-                                width,
-                                height,
-                                totalDuration: total_duration,
-                                totalChunks: total_chunks,
-                                receivedChunks: 0,
-                                keyVersion: key_version,
-                                originalFileS3Key,
-                                s3Key: s3Key,
-                                uploadId: multipartUpload.UploadId, // Save the upload ID
-                                uploadedParts: []
-
-                            };
-
-                            callback({ stattus: "Success" });
-                        } else {
-                            throw err
-                        }
-                    }
-
-
-                } else {
-                    throw error;
-                }
+                callback({ status: "Success" });
 
             }
 
@@ -1141,141 +952,73 @@ VALUES (?, ?, ?, ?);`;
 
 
             const {
-                senderId,
-                recipientId,
                 messageId,
-                replyId,
-                category,
-                contentType,
-                type,
-                message,
-                originalFileName,
-                filePath,
-                fileExtension,
-                width,
-                height,
-                totalDuration,
-                keyVersion,
-                originalFileS3Key
+                originalFilePath,
+                filePath
             } = thumbnailTransfer;
-
-
-
-
 
 
             const buffer = Buffer.from(data, 'binary');
 
 
-            // Upload the chunk to S3 as a part of the multipart upload
-            const uploadPartParams = {
-                Bucket: S3_BUCKET_NAME,
-                Key: thumbnailTransfer.s3Key,
-                PartNumber: chunk_index + 1, // PartNumber starts from 1 for S3
-                UploadId: thumbnailTransfer.uploadId,
-                Body: buffer,
-            };
+            const writeStream = fs.createWriteStream(filePath, {
+                flags: 'a+',   // Open the file for reading and writing
+                start: byte_offset  // Specify the position where to start writing
+            });
+
+            // Write the buffer data to the file
+            writeStream.write(buffer, (err) => {
+                if (err) {
+                    callback('Unexpected error occurred', { error: true, status: "FILE_WRITING_ERROR" });
+
+                    console.error("Error writing to file:", err);
+                } else {
+                    console.log(`Data successfully written at offset`);
 
 
-            // Upload the chunk part to S3
-            const uploadPartResponse = await awsS3Bucket.uploadPart(uploadPartParams).promise();
+                    // Get updated file size
+                    const totalUploadedSize = fs.statSync(originalFilePath).size + fs.statSync(filePath).size;
 
 
-            // Track the part and its ETag
-            thumbnailTransfer.uploadedParts.push({
-                PartNumber: chunk_index + 1,
-                ETag: uploadPartResponse.ETag,
+
+                    socket.emit(`chat:mediaThumbnailChunkAck-${file_id}-${chunk_index}`, {
+                        delivered_at: new Date(),
+                        messageId,
+                        fileId: file_id,
+                        chunkIndex: chunk_index,
+                        updatedSize: totalUploadedSize,
+                    });
+
+                    // Update receivedChunks count
+                    thumbnailTransfer.receivedChunks++;
+
+
+                    // Check if all chunks are received
+                    if (thumbnailTransfer.receivedChunks === thumbnailTransfer.totalChunks) {
+
+
+                        writeStream.end();
+
+                        socket.emit(`chat:thumbnailTransferCompleted-${file_id}`, {
+                            delivered_at: new Date(),
+                            messageId,
+                            status: "THUMBNAIL_TRANSFER_COMPLETED"
+                        });
+
+
+                        // Clean up transfer state
+                        delete thumbnailTransfers[file_id];
+
+                    }
+
+
+                }
+
             });
 
 
 
-            console.log(thumbnailTransfer.uploadId);
 
-            const listPartsParams = {
-                Bucket: S3_BUCKET_NAME,
-                Key: thumbnailTransfer.s3Key,
-                UploadId: thumbnailTransfer.uploadId
-            };
-
-            const listPartsResult = await awsS3Bucket.listParts(listPartsParams).promise();
-
-
-            // Initialize total size
-            let totalUploadedSize = 0;
-
-            // Sum the sizes of the uploaded parts
-            listPartsResult.Parts.forEach(part => {
-                totalUploadedSize += part.Size; // Each part has a 'Size' field that indicates its size in bytes
-            });
-
-
-            const headParams = {
-                Bucket: S3_BUCKET_NAME,
-                Key: originalFileS3Key, // The key for the object (file) in S3
-            };
-
-            const headObjectResult = await awsS3Bucket.headObject(headParams).promise();
-
-            // The total size of the object is stored in the `ContentLength` field
-            const originalFileSize = headObjectResult.ContentLength;
-
-
-
-            const totalWrittenSize = originalFileSize + totalUploadedSize; // Get the updated file size from S3
-
-            socket.emit(`chat:mediaThumbnailChunkAck-${file_id}-${chunk_index}`, {
-                delivered_at: new Date(),
-                messageId,
-                fileId: file_id,
-                chunkIndex: chunk_index,
-                updatedSize: totalWrittenSize,
-            });
-
-            // Update receivedChunks count
-            thumbnailTransfer.receivedChunks++;
-
-
-            // Check if all chunks are received
-            if (thumbnailTransfer.receivedChunks === thumbnailTransfer.totalChunks) {
-
-                // Sort parts by PartNumber (to avoid the InvalidPartOrder error)
-                thumbnailTransfer.uploadedParts.sort((a, b) => a.PartNumber - b.PartNumber);
-
-
-                // All parts uploaded, now complete the multipart upload
-                const completeParams = {
-                    Bucket: S3_BUCKET_NAME,
-                    Key: thumbnailTransfer.s3Key,
-                    UploadId: thumbnailTransfer.uploadId,
-                    MultipartUpload: {
-                        Parts: thumbnailTransfer.uploadedParts,
-                    },
-                };
-
-                // Complete the upload
-                const completeUploadResponse = await awsS3Bucket.completeMultipartUpload(completeParams).promise();
-
-                console.log('Thumbnail Upload completed successfully:');
-
-
-                socket.emit(`chat:thumbnailTransferCompleted-${file_id}`, {
-                    delivered_at: new Date(),
-                    messageId,
-                    status: "THUMBNAIL_TRANSFER_COMPLETED"
-                });
-
-
-                const deleteUploadMetadataQuery = `
-                    DELETE FROM upload_metadata
-                   WHERE sender_id = ? AND recipient_id = ? AND message_id = ?
-                    `;
-
-                await promise.query(deleteUploadMetadataQuery, [senderId, recipientId, messageId]);
-
-                // Clean up transfer state
-                delete thumbnailTransfers[file_id];
-
-            }
 
         } catch (err) {
             console.log(err);
@@ -1306,22 +1049,19 @@ VALUES (?, ?, ?, ?);`;
 
         const parsedFileName = path.parse(file_name);
 
-
         // Define the S3 key (file path in the bucket) for storage
-        const s3Key = `uploads/${recipient_id.toString()}/${file_id}_${parsedFileName.name}.enc`;
+        const mediaPath = path.join('uploads', recipient_id.toString(), `${file_id}_${parsedFileName.name}.enc`);
+
+        // Get file stats
+        const stats = fs.statSync(path.join(MEDIA_ROOT_PATH, mediaPath));
+
 
         // Construct the URL for accessing the file
-        const fileUrl = `${MEDIA_BASE_URL}/${s3Key}`;
+        const fileUrl = `${MEDIA_BASE_URL}/${mediaPath}`;
 
-        // Fetch file metadata from S3 to get file size
-        const headParams = {
-            Bucket: S3_BUCKET_NAME,
-            Key: s3Key,
-        };
 
-        const headResponse = await awsS3Bucket.headObject(headParams).promise();
 
-        const fileSize = headResponse.ContentLength; // File size from S3
+        const fileSize = stats.size; // File size from S3
 
 
         const file_meta_data = JSON.stringify({
@@ -1416,8 +1156,6 @@ VALUES (?, ?, ?, ?);`;
                 }
             });
         } else {
-
-
             // If recipient socket doesn't exist
             await insert_offline_message();
         }
@@ -1446,35 +1184,28 @@ VALUES (?, ?, ?, ?);`;
 
 
 
-
-
         const parsedFileName = path.parse(file_name);
 
-
         // Define the S3 key (file path in the bucket) for storage
-        const s3Key = `uploads/${recipient_id.toString()}/${file_id}_${parsedFileName.name}.enc`;
+        const mediaPath = path.join('uploads', recipient_id.toString(), `${file_id}_${parsedFileName.name}.enc`);
 
-        // Construct the URL for accessing the file
-        const fileUrl = `${MEDIA_BASE_URL}/${s3Key}`;
-
-        // Fetch file metadata from S3 to get file size
-        const headParams = {
-            Bucket: S3_BUCKET_NAME,
-            Key: s3Key,
-        };
-
-        const headResponse = await awsS3Bucket.headObject(headParams).promise();
-
-        const fileSize = headResponse.ContentLength; // File size from S3
-
-
-
-        // Define the S3 key (file path in the bucket) for storage
-        const thumbnailS3Key = `uploads/thumbnails/${recipient_id.toString()}/${file_id}_${parsedFileName.name}_thumbnail.enc`;
+        // Get file stats
+        const stats = fs.statSync(path.join(MEDIA_ROOT_PATH, mediaPath));
 
 
         // Construct the URL for accessing the file
-        const thumbnailUrl = `${MEDIA_BASE_URL}/${thumbnailS3Key}`;
+        const fileUrl = `${MEDIA_BASE_URL}/${mediaPath}`;
+
+
+
+        const fileSize = stats.size; // File size from S3
+
+        // Define the S3 key (file path in the bucket) for storage
+        const thumbnailFile = path.join('uploads', 'thumbnails', recipient_id.toString(), `${file_id}_${parsedFileName.name}_thumbnail.enc`);
+
+
+        // Construct the URL for accessing the file
+        const thumbnailUrl = `${MEDIA_BASE_URL}/${thumbnailFile}`;
 
 
 
@@ -1530,9 +1261,6 @@ VALUES (?, ?, ?, ?);`;
         // If recipient is offline
         if (!recipient_user.online) {
             await insert_offline_message();
-
-
-
             return;
         }
 
@@ -1781,6 +1509,8 @@ VALUES (?, ?, ?, ?);`;
 
 
             if (!recipientSocket || !recipientUser.online) {
+                console.log("S'");
+
                 // Insert acknowledgment into offline_acks if recipient is offline
                 await promise.query(
                     `INSERT INTO offline_acks (message_id, sender_id, recipient_id, status, ack_type) VALUES (?, ?, ?, ?, ?)`,
@@ -1802,6 +1532,7 @@ VALUES (?, ?, ?, ?);`;
 
                 async (err, response) => {
                     if (err) {
+                        console.log(err);
 
                         // Insert acknowledgment into offline_acks if recipient is offline
                         await promise.query(
@@ -1810,16 +1541,21 @@ VALUES (?, ?, ?, ?);`;
                         );
 
                         logMessage(`No acknowledgment received for message ${data.message_id}.`, err);
+                        if (callback) {
+                            callback();
+                        }
                         return;
+                    } else {
+
+                        if (callback) {
+                            callback();
+                        }
                     }
                 }
             );
 
 
 
-            if (callback) {
-                callback();
-            }
 
         } catch (err) {
             logMessage('Error handling acknowledgment:', err);
