@@ -22,6 +22,22 @@ const { error } = require('console');
 const { awsS3Bucket } = require('./config/awsS3')
 
 
+
+const path = require('path');
+
+const filePath = path.join('/mnt/ebs', 'example.txt');
+
+fs.writeFile(filePath, 'Hello from Node.js!', (err) => {
+  if (err) {
+    console.error('Error writing file:', err);
+  } else {
+    console.log('File written successfully');
+  }
+});
+
+
+
+
 // Variable to track if the job is running
 let isJobRunning = false;
 
