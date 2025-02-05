@@ -1,30 +1,22 @@
-// db.js
 const mysql = require('mysql2');
-const fs = require('fs');
-const path = require('path');
+const { DATABASE_URL, DATABASE_USERNAME, DATABASE_PASSWORD, DATABASE_NAME } = require('../config/config');
 
-const { DATABASE_URL, DATABASE_USERNAME, DATABASE_PASSWORD, DATABASE_NAME } = require('./config');
-
-
-// Log file path
-const logFilePath = path.join(__dirname, 'server.log');
-
-// Helper function to log messages
-const logMessage = (message) => {
-    const timestamp = new Date().toISOString();
-    fs.appendFile(logFilePath, `[${timestamp}] ${message}\n`, (err) => {
-        if (err) throw err;
-    });
-};
-
+// Create the connection pool
 const db = mysql.createPool({
-    host: DATABASE_URL, // your database host
-    user: DATABASE_USERNAME, // default XAMPP MySQL username
-    password: DATABASE_PASSWORD, // default XAMPP MySQL password (usually empty)
-    database: DATABASE_NAME, // replace with your actual database name
-});   
+    host: DATABASE_URL,
+    user: DATABASE_USERNAME,
+    password: DATABASE_PASSWORD,
+    database: DATABASE_NAME,
+});
 
+// Test the connection
+db.getConnection((err, connection) => {
+    if (err) {
+        console.error('Error connecting to the database:', err);
+        return;
+    }
+    console.log('Successfully connected to the database');
+    connection.release();  // Always release the connection when done
+});
 
-
-
-module.exports = {db, promise:db.promise()};
+module.exports = { db, promise: db.promise() };
