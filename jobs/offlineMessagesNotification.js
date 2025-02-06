@@ -23,11 +23,6 @@ ORDER BY om.created_at ASC;`);
 
 
       
-
-
-
-
-
         for (const row of results) {
 
             const senderId = row.sender_id; // Get sender_id

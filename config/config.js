@@ -6,6 +6,9 @@ module.exports = {
     MEDIA_ROOT_PATH: process.env.MEDIA_ROOT_PATH,
     MEDIA_BASE_URL: process.env.MEDIA_BASE_URL,
 
+    GL_ACCESS_TOKEN_SECRET: process.env.GL_ACCESS_TOKEN_SECRET,
+    FCM_TOKEN_SECRET: process.env.FCM_TOKEN_SECRET,
+
     DATABASE_URL: process.env.DATABASE_URL,
     DATABASE_USERNAME: process.env.DATABASE_USERNAME,
     DATABASE_PASSWORD: process.env.DATABASE_PASSWORD,

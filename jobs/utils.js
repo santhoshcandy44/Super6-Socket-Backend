@@ -1,9 +1,8 @@
 const crypto = require('crypto');
 const fs = require('fs');
 const axios = require('axios');
+const { FCM_TOKEN_SECRET } = require('../config/config');
 
-const ACCESS_TOKEN_SECRET = "b6d4e0ef20f377de6d6f700b5e6a91f6af0c25d2b50c9cb9a2a5ef95b65d2d9d";
-const FCM_TOKEN_SECRET = "b6d4e0ef20f377de6d6f700b5e6a91f6af0c25d2b50c9cb9a2a5ef95b65d2d9d";
 
 const keyJson = JSON.parse(fs.readFileSync('./jobs/service_account.json', 'utf8'));
 
@@ -27,7 +26,6 @@ async function getAccessToken() {
     const jwtClaimsEncoded = Buffer.from(JSON.stringify(jwtClaims)).toString('base64').replace(/=+$/, '');
     const signingInput = `${jwtHeaderEncoded}.${jwtClaimsEncoded}`;
 
-    const crypto = require('crypto');
     const signature = crypto.createSign('SHA256').update(signingInput).sign(keyJson.private_key, 'base64');
     const jwtSignatureEncoded = signature.replace(/=+$/, '');
 
@@ -64,6 +62,7 @@ function decodeFCMToken(text) {
 
 // Function to send FCM notification
 async function sendFCMNotification(accessToken, fcmToken, type, title, data, message_id) {
+
 
     const url = 'https://fcm.googleapis.com/v1/projects/pot-app-5cebb/messages:send';
 
@@ -179,7 +178,6 @@ async function sendFCMNotification(accessToken, fcmToken, type, title, data, mes
         });
 
 
-        console.log(response.data);
 
         return response.data;
 
@@ -191,7 +189,6 @@ async function sendFCMNotification(accessToken, fcmToken, type, title, data, mes
 }
 
 module.exports = {
-    ACCESS_TOKEN_SECRET,
     decodeFCMToken,
     sendFCMNotification,
     getAccessToken

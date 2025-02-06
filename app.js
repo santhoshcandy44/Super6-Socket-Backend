@@ -13,28 +13,12 @@ const cron = require('node-cron');
 const jwt = require('jsonwebtoken');
 const runGeneralNotificationJob = require('./jobs/generalNotification'); // Adjust the path if necessary
 const runOfflineMessagesNotificationJob = require('./jobs/offlineMessagesNotification'); // Adjust the path if necessary
-const { ACCESS_TOKEN_SECRET } = require('./jobs/utils');
-const { BASE_URL, PROFILE_BASE_URL, MEDIA_ROOT_PATH, MEDIA_BASE_URL, S3_BUCKET_NAME } = require('./config/config');
+const { BASE_URL, PROFILE_BASE_URL, MEDIA_ROOT_PATH, MEDIA_BASE_URL, S3_BUCKET_NAME, GL_ACCESS_TOKEN_SECRET } = require('./config/config');
 
 const { logMessage } = require('./common/utils');
 const { error } = require('console');
 
 const { awsS3Bucket } = require('./config/awsS3')
-
-
-
-
-const filePath = path.join(MEDIA_ROOT_PATH, 'example.txt');
-
-fs.writeFile(filePath, 'Hello from Node.js!', (err) => {
-  if (err) {
-    console.error('Error writing file:', err);
-  } else {
-    console.log('File written successfully');
-  }
-});
-
-
 
 
 // Variable to track if the job is running
@@ -70,24 +54,24 @@ async function offlineMessagesDeliveryJob() {
 
 
 //Schedule the FCM job to run every 2 seconds
-// cron.schedule('*/1 * * * * *', async () => {
-//     try {
-//         await offlineMessagesDeliveryJob();
-//     } catch (error) {
-//         isJobRunning = false;
-//         console.error('Error running FCM job:', error);
-//     }
-// });
+cron.schedule('*/1 * * * * *', async () => {
+    try {
+        await offlineMessagesDeliveryJob();
+    } catch (error) {
+        isJobRunning = false;
+        console.error('Error running FCM job:', error);
+    }
+});
 
 
-// cron.schedule('*/1 * * * * *', async () => {
-//     try {
-//         await runGeneralNotificationJob();
-//     } catch (error) {
-//         isJobRunning = false;
-//         console.error('Error running FCM job:', error);
-//     }
-// });
+cron.schedule('*/1 * * * * *', async () => {
+    try {
+        await runGeneralNotificationJob();
+    } catch (error) {
+        isJobRunning = false;
+        console.error('Error running FCM job:', error);
+    }
+});
 
 
 
@@ -126,7 +110,7 @@ io.use(async (socket, next) => {
     if (token) {
 
         // Verify the token (replace 'YOUR_SECRET_KEY' with your actual secret key)
-        jwt.verify(token, ACCESS_TOKEN_SECRET, (err, decoded) => {
+        jwt.verify(token, GL_ACCESS_TOKEN_SECRET, (err, decoded) => {
             if (err) {
 
                 if (err.message == "jwt expired") {
@@ -606,7 +590,6 @@ io.on('connection', (socket) => {
                         status: "ALL_CHUNKS_RECEIVED_FILE_TRANSFER_COMPLETED"
                     });
 
-                    console.log("Done");
                     return
                 }
 
@@ -697,8 +680,6 @@ io.on('connection', (socket) => {
 
 
         try {
-
-
             if (!fileTransfer) {
                 callback('Invalid file transfer state', { status: "MEDIA_TRANSFER_NOT_FOUND" });
                 return;
@@ -707,74 +688,70 @@ io.on('connection', (socket) => {
             const {
                 messageId,
                 filePath,
+                fileSize
             } = fileTransfer;
 
+            const byteOffset = fs.existsSync(filePath)
+                ? Math.min(byte_offset, fs.statSync(filePath).size)  // If file exists, get the size and return the correct byte offset
+                : 0;  // Start from 0 if the file doesn't exist
 
             const buffer = Buffer.from(data, 'binary');
 
+            let fd;
+            try {
+                // Open the file for writing in append mode or read-write mode
+                fd = fs.existsSync(filePath)
+                    ? fs.openSync(filePath, 'r+')
+                    : fs.openSync(filePath, 'a+');
+
+                // Write the data at the specified byte offset
+                fs.writeSync(fd, buffer, 0, buffer.length, byteOffset);
+
+                // Get updated file size
+                const totalUploadedSize = fs.statSync(filePath).size;
+
+                socket.emit(`chat:mediaChunkAck-${file_id}-${chunk_index}`, {
+                    delivered_at: new Date(),
+                    messageId,
+                    fileId: file_id,
+                    chunkIndex: chunk_index,
+                    updatedSize: totalUploadedSize,
+                });
+
+                // Update receivedChunks count
+                fileTransfer.receivedChunks++;
+
+                // Check if all chunks are received
+                if (fileTransfer.receivedChunks === fileTransfer.totalChunks) {
 
 
-            const writeStream = fs.createWriteStream(filePath, {
-                flags: 'a+',   // Open the file for reading and writing
-                start: byte_offset  // Specify the position where to start writing
-            });
-
-            // Write the buffer data to the file
-            writeStream.write(buffer, (err) => {
-                if (err) {
-                    callback('Unexpected error occurred', { error: true, status: "FILE_WRITING_ERROR" });
-
-                    console.error("Error writing to file:", err);
-                } else {
-                    console.log(`Data successfully written at offset`);
-
-
-                    // Get updated file size
-                    const totalUploadedSize = fs.statSync(filePath).size;
-
-
-                    socket.emit(`chat:mediaChunkAck-${file_id}-${chunk_index}`, {
+                    socket.emit(`chat:fileTransferCompleted-${file_id}`, {
                         delivered_at: new Date(),
                         messageId,
-                        fileId: file_id,
-                        chunkIndex: chunk_index,
-                        updatedSize: totalUploadedSize,
+                        status: "FILE_TRANSFER_COMPLETED"
                     });
 
-                    // Update receivedChunks count
-                    fileTransfer.receivedChunks++;
-
-
-                    // Check if all chunks are received
-                    if (fileTransfer.receivedChunks === fileTransfer.totalChunks) {
-                        // End the stream
-                        writeStream.end();
-                        console.log('Upload completed successfully:');
-
-
-                        socket.emit(`chat:fileTransferCompleted-${file_id}`, {
-                            delivered_at: new Date(),
-                            messageId,
-                            status: "FILE_TRANSFER_COMPLETED"
-                        });
-
-                        // Clean up transfer state
-                        delete fileTransfers[file_id];
-
-                    }
-
+                    // Clean up transfer state
+                    delete fileTransfers[file_id];
                 }
-
-            });
-
-
+            } catch (err) {
+                console.log(err);
+                logMessage('Unexpected error: ' + err.message);
+                callback('Unexpected error occurred', { status: "UNKNOWN_ERROR" });
+            } finally {
+                // Ensure file descriptor is always closed, even if an error occurred
+                if (fd) {
+                    fs.closeSync(fd);
+                }
+            }
 
         } catch (err) {
-
             console.log(err);
             logMessage('Unexpected error: ' + err.message);
             callback('Unexpected error occurred', { status: "UNKNOWN_ERROR" });
         }
+
+
     });
 
 
@@ -841,10 +818,10 @@ io.on('connection', (socket) => {
 
             const parsedFileName = path.parse(file_name); // This will break the filename into parts (name, ext, etc.)
 
-            const originalFilePath = path.join(MEDIA_ROOT_PATH, "uploads", `${recipient_id}/${file_id}_${parsedFileName.name}.enc` ); // ✅ Correct file path
+            const originalFilePath = path.join(MEDIA_ROOT_PATH, "uploads", `${recipient_id}/${file_id}_${parsedFileName.name}.enc`);
 
-            const dirPath = path.join(MEDIA_ROOT_PATH, `uploads`, `thumbnails`, recipient_id.toString()); // ✅ Correct file path
-            const mediaPath = path.join(dirPath, `${file_id}_${parsedFileName.name}_thumbnail.enc`); // ✅ Correct file path
+            const dirPath = path.join(MEDIA_ROOT_PATH, `uploads`, `thumbnails`, recipient_id.toString());
+            const mediaPath = path.join(dirPath, `${file_id}_${parsedFileName.name}_thumbnail.enc`);
 
 
 
@@ -976,63 +953,67 @@ io.on('connection', (socket) => {
             const buffer = Buffer.from(data, 'binary');
 
 
-            const writeStream = fs.createWriteStream(filePath, {
-                flags: 'a+',   // Open the file for reading and writing
-                start: byte_offset  // Specify the position where to start writing
-            });
-
-            // Write the buffer data to the file
-            writeStream.write(buffer, (err) => {
-                if (err) {
-                    callback('Unexpected error occurred', { error: true, status: "FILE_WRITING_ERROR" });
-
-                    console.error("Error writing to file:", err);
-                } else {
-                    console.log(`Data successfully written at offset`);
 
 
-                    // Get updated file size
-                    const totalUploadedSize = fs.statSync(originalFilePath).size + fs.statSync(filePath).size;
+            const byteOffset = fs.existsSync(filePath)
+                ? Math.min(byte_offset, fs.statSync(filePath).size)  // If file exists, get the size and return the correct byte offset
+                : 0;  // Start from 0 if the file doesn't exist
+
+
+            let fd;
+            try {
+                // Open the file for writing in append mode or read-write mode
+                fd = fs.existsSync(filePath)
+                    ? fs.openSync(filePath, 'r+')
+                    : fs.openSync(filePath, 'a+');
+
+                // Write the data at the specified byte offset
+                fs.writeSync(fd, buffer, 0, buffer.length, byteOffset);
+
+
+                // Get updated file size
+                const totalUploadedSize = fs.statSync(originalFilePath).size + fs.statSync(filePath).size;
 
 
 
-                    socket.emit(`chat:mediaThumbnailChunkAck-${file_id}-${chunk_index}`, {
+                socket.emit(`chat:mediaThumbnailChunkAck-${file_id}-${chunk_index}`, {
+                    delivered_at: new Date(),
+                    messageId,
+                    fileId: file_id,
+                    chunkIndex: chunk_index,
+                    updatedSize: totalUploadedSize,
+                });
+
+                // Update receivedChunks count
+                thumbnailTransfer.receivedChunks++;
+
+
+                // Check if all chunks are received
+                if (thumbnailTransfer.receivedChunks === thumbnailTransfer.totalChunks) {
+
+                    socket.emit(`chat:thumbnailTransferCompleted-${file_id}`, {
                         delivered_at: new Date(),
                         messageId,
-                        fileId: file_id,
-                        chunkIndex: chunk_index,
-                        updatedSize: totalUploadedSize,
+                        status: "THUMBNAIL_TRANSFER_COMPLETED"
                     });
 
-                    // Update receivedChunks count
-                    thumbnailTransfer.receivedChunks++;
 
-
-                    // Check if all chunks are received
-                    if (thumbnailTransfer.receivedChunks === thumbnailTransfer.totalChunks) {
-
-
-                        writeStream.end();
-
-                        socket.emit(`chat:thumbnailTransferCompleted-${file_id}`, {
-                            delivered_at: new Date(),
-                            messageId,
-                            status: "THUMBNAIL_TRANSFER_COMPLETED"
-                        });
-
-
-                        // Clean up transfer state
-                        delete thumbnailTransfers[file_id];
-
-                    }
-
+                    // Clean up transfer state
+                    delete thumbnailTransfers[file_id];
 
                 }
 
-            });
 
-
-
+            } catch (err) {
+                console.log(err);
+                logMessage('Unexpected error: ' + err.message);
+                callback('Unexpected error occurred', { status: "UNKNOWN_ERROR" });
+            } finally {
+                // Ensure file descriptor is always closed, even if an error occurred
+                if (fd) {
+                    fs.closeSync(fd);
+                }
+            }
 
 
         } catch (err) {
@@ -1497,8 +1478,6 @@ io.on('connection', (socket) => {
     }
 
 
-
-
     // Handle acknowledgment
     socket.on('chat:acknowledgment', async (data, callback) => {
 
@@ -1524,7 +1503,6 @@ io.on('connection', (socket) => {
 
 
             if (!recipientSocket || !recipientUser.online) {
-                console.log("S'");
 
                 // Insert acknowledgment into offline_acks if recipient is offline
                 await promise.query(
@@ -1580,6 +1558,51 @@ io.on('connection', (socket) => {
     });
 
 
+
+
+    // Socket event to handle media status
+    socket.on('chat:mediaStatus', async (data, callback) => {
+        try {
+          
+            const downloadUrl = data.download_url
+
+            // Check if the download URL starts with the base URL
+            if (downloadUrl.startsWith(MEDIA_BASE_URL)) {
+                const relativeFilePath = downloadUrl.replace(MEDIA_BASE_URL, '');
+
+                // Now, join it with the root directory of your server where files are stored
+                const filePath = path.join(MEDIA_ROOT_PATH, relativeFilePath);
+
+                // Check if the file exists
+                fs.stat(filePath, (err, stats) => {
+                    if (err) {
+                        if (err.code === 'ENOENT') {
+                            // If the file doesn't exist, return an error response
+                            return callback();
+                        }
+                        // Handle other errors
+                        return callback();
+                    }
+
+                    // File exists, attempt to delete it
+                    fs.unlink(filePath, (err) => {
+                        if (err) {
+                            // Error deleting the file
+                            return callback();
+                        }
+
+                        return callback();
+                    });
+                });
+            } else {
+                // If the URL doesn't start with the expected base URL, return an error
+                return callback();
+            }
+        } catch (error) {
+            // General error handling
+            return callback();
+        }
+    });
 
     // Handle profile picture update
     socket.on('chat:profilePicUpdated', async (data) => {
