@@ -1538,6 +1538,7 @@ io.on('connection', (socket) => {
                         console.log("7");
 
                         logMessage(`No acknowledgment received for message ${data.message_id}.`, err);
+                        console.log("User offline ack");
                         if (callback) {
                             callback();
                         }
