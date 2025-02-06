@@ -37,9 +37,13 @@ WHERE n.type = 'welcome'
         try {
 
 
+
             const {user_id, notification_id, title, message, fcm_token,type } = row;
-
-
+        
+            if(!fcm_token){
+                return
+            }
+            
             const decodedFCMToken =  decodeFCMToken(fcm_token);
             await sendFCMNotification(accessToken, decodedFCMToken, "general", title, JSON.stringify(
                 {
@@ -57,6 +61,7 @@ WHERE n.type = 'welcome'
 
         } catch (error) {
 
+            console.log(error);
 
             if (error.response) {
                 // Server responded with a status code outside of the 2xx range
