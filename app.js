@@ -155,7 +155,7 @@ io.on('connection', (socket) => {
                     logMessage(error);
                 }
 
-            }, 5000); // Timeout of 5 seconds
+            }, 10000); // Timeout of 10 seconds
         } catch (error) {
             console.log(error);
             logMessage(error);
@@ -1121,7 +1121,7 @@ io.on('connection', (socket) => {
             // Delay before sending the chat message
             await delay(500);
 
-            recipient_socket.timeout(5000).emit('chat:check', { sender: sender_id }, async (error, response) => {
+            recipient_socket.timeout(10000).emit('chat:check', { sender: sender_id }, async (error, response) => {
                 if (error) {
                     await insert_offline_message();
                 } else {
@@ -1262,7 +1262,7 @@ io.on('connection', (socket) => {
             // Delay before sending the chat message
             await delay(500);
 
-            recipient_socket.timeout(5000).emit('chat:check', { sender: sender_id }, async (error, response) => {
+            recipient_socket.timeout(10000).emit('chat:check', { sender: sender_id }, async (error, response) => {
                 if (error) {
                     await insert_offline_message();
                 } else {
@@ -1445,7 +1445,7 @@ io.on('connection', (socket) => {
 
             delay(500);
 
-            io.to(recipientSocket.id).timeout(5000).emit('chat:messageStatus', { sender, message_id, status, recipient_id, ack_type: ackType },
+            io.to(recipientSocket.id).timeout(10000).emit('chat:messageStatus', { sender, message_id, status, recipient_id, ack_type: ackType },
 
 
 
@@ -1494,7 +1494,6 @@ io.on('connection', (socket) => {
             if (results.length === 0) {
                 return;
             }
-            console.log("2");
 
             const recipientUser = results[0];
 
@@ -1520,22 +1519,18 @@ io.on('connection', (socket) => {
 
             delay(500);
 
-            console.log("3");
 
             io.to(recipientSocket.id).timeout(10000).emit('chat:messageStatus', { sender, message_id, status, recipient_id, ack_type: ackType },
 
                 async (err, response) => {
                     if (err) {
-                        console.log(err);
 
-                        console.log("4");
 
                         // Insert acknowledgment into offline_acks if recipient is offline
                         await promise.query(
                             `INSERT INTO offline_acks (message_id, sender_id, recipient_id, status, ack_type) VALUES (?, ?, ?, ?, ?)`,
                             [message_id, sender, recipient_id, status, ackType]
                         );
-                        console.log("7");
 
                         logMessage(`No acknowledgment received for message ${data.message_id}.`, err);
                         console.log("User offline ack");
@@ -1544,7 +1539,6 @@ io.on('connection', (socket) => {
                         }
                         return;
                     } else {
-                        console.log("5");
 
                         if (callback) {
                             callback();
