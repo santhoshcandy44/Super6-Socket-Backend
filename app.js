@@ -45,9 +45,6 @@ async function offlineMessagesDeliveryJob() {
 
         }
 
-        // Break the loop if the job is done
-        // Add a condition to exit the loop, for example, checking if there are messages left
-        // For demonstration purposes, we'll exit after one iteration
     }
 
 }
@@ -1483,6 +1480,7 @@ io.on('connection', (socket) => {
 
 
         try {
+            console.log("1 Testing");
 
             const { sender, message_id, recipient_id, status } = data;
 
@@ -1496,6 +1494,7 @@ io.on('connection', (socket) => {
             if (results.length === 0) {
                 return;
             }
+            console.log("2");
 
             const recipientUser = results[0];
 
@@ -1521,17 +1520,22 @@ io.on('connection', (socket) => {
 
             delay(500);
 
+            console.log("3");
+
             io.to(recipientSocket.id).timeout(5000).emit('chat:messageStatus', { sender, message_id, status, recipient_id, ack_type: ackType },
 
                 async (err, response) => {
                     if (err) {
                         console.log(err);
 
+                        console.log("4");
+
                         // Insert acknowledgment into offline_acks if recipient is offline
                         await promise.query(
                             `INSERT INTO offline_acks (message_id, sender_id, recipient_id, status, ack_type) VALUES (?, ?, ?, ?, ?)`,
                             [message_id, sender, recipient_id, status, ackType]
                         );
+                        console.log("7");
 
                         logMessage(`No acknowledgment received for message ${data.message_id}.`, err);
                         if (callback) {
@@ -1539,6 +1543,7 @@ io.on('connection', (socket) => {
                         }
                         return;
                     } else {
+                        console.log("5");
 
                         if (callback) {
                             callback();
