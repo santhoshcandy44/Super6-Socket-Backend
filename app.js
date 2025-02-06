@@ -1522,7 +1522,7 @@ io.on('connection', (socket) => {
 
             console.log("3");
 
-            io.to(recipientSocket.id).timeout(5000).emit('chat:messageStatus', { sender, message_id, status, recipient_id, ack_type: ackType },
+            io.to(recipientSocket.id).timeout(10000).emit('chat:messageStatus', { sender, message_id, status, recipient_id, ack_type: ackType },
 
                 async (err, response) => {
                     if (err) {
