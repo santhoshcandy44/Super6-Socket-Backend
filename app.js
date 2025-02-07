@@ -1480,7 +1480,6 @@ io.on('connection', (socket) => {
 
 
         try {
-            console.log("1 Testing");
 
             const { sender, message_id, recipient_id, status } = data;
 
@@ -1723,7 +1722,7 @@ async function handleUndeliveredMessage(socket, data) {
 
         // If recipient is online, broadcast the message status after a delay
         await delay(500); // Ensure delay is wrapped in a promise
-        socket.broadcast.emit('chat:messageStatus', { sender: data.sender, message_id: data.message_id, status: status });
+        socket.broadcast.emit('chat:messageStatus', { sender, recipient_id, message_id, status });
 
 
 
