@@ -1699,7 +1699,6 @@ async function handleUndeliveredMessage(socket, data) {
 
         const { sender, message_id, recipient_id, status } = data;
 
-        console.log(data);
 
         const checkRecipientQuery = 'SELECT socket_id, online FROM chat_info WHERE user_id = ?';
         // Use promise.query with async/await for better error handling
@@ -1714,8 +1713,8 @@ async function handleUndeliveredMessage(socket, data) {
         if (!recipientUser.online) {
             // Insert acknowledgment into offline_acks if recipient is offline
             await promise.query(
-                `INSERT INTO offline_acks (message_id, sender_id, recipient_id, status) VALUES (?, ?, ?, ?)`,
-                [message_id, sender, recipient_id, status]
+                `INSERT INTO offline_acks (message_id, sender_id, recipient_id, status) VALUES (?, ?, ?, ?, ?)`,
+                [message_id, sender, recipient_id, status, "self"]
             );
 
             return;
@@ -1724,7 +1723,6 @@ async function handleUndeliveredMessage(socket, data) {
         // If recipient is online, broadcast the message status after a delay
         await delay(500); // Ensure delay is wrapped in a promise
 
-        console.log("BROADCASTING");
 
         socket.broadcast.timeout(10000).emit('chat:messageStatus', { sender, recipient_id, message_id, status },
            
@@ -1734,7 +1732,7 @@ async function handleUndeliveredMessage(socket, data) {
                     // Insert acknowledgment into offline_acks if recipient is offline
                     await promise.query(
                         `INSERT INTO offline_acks (message_id, sender_id, recipient_id, status, ack_type) VALUES (?, ?, ?, ?, ?)`,
-                        [message_id, sender, recipient_id, status, ackType]
+                        [message_id, sender, recipient_id, status, "self"]
                     );
                     logMessage(`No acknowledgment received for message ${data.message_id}.`, err);
                     return;
