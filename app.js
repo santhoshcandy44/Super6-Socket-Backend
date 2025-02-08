@@ -1699,6 +1699,8 @@ async function handleUndeliveredMessage(socket, data) {
 
         const { sender, message_id, recipient_id, status } = data;
 
+        console.log(data);
+
         const checkRecipientQuery = 'SELECT socket_id, online FROM chat_info WHERE user_id = ?';
         // Use promise.query with async/await for better error handling
         const [results] = await promise.query(checkRecipientQuery, [sender]);
