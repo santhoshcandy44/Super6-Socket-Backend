@@ -1448,7 +1448,6 @@ io.on('connection', (socket) => {
             io.to(recipientSocket.id).timeout(10000).emit('chat:messageStatus', { sender, message_id, status, recipient_id, ack_type: ackType },
 
 
-
                 async (err, response) => {
                     if (err) {
 
@@ -1722,7 +1721,21 @@ async function handleUndeliveredMessage(socket, data) {
 
         // If recipient is online, broadcast the message status after a delay
         await delay(500); // Ensure delay is wrapped in a promise
-        socket.broadcast.emit('chat:messageStatus', { sender, recipient_id, message_id, status });
+        socket.broadcast.timeout(10000).emit('chat:messageStatus', { sender, recipient_id, message_id, status },
+           
+            async (err, response) => {
+                if (err) {
+
+                    // Insert acknowledgment into offline_acks if recipient is offline
+                    await promise.query(
+                        `INSERT INTO offline_acks (message_id, sender_id, recipient_id, status, ack_type) VALUES (?, ?, ?, ?, ?)`,
+                        [message_id, sender, recipient_id, status, ackType]
+                    );
+                    logMessage(`No acknowledgment received for message ${data.message_id}.`, err);
+                    return;
+                }
+            }
+        );
 
 
 
