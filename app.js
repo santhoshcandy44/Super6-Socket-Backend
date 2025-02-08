@@ -1713,7 +1713,7 @@ async function handleUndeliveredMessage(socket, data) {
         if (!recipientUser.online) {
             // Insert acknowledgment into offline_acks if recipient is offline
             await promise.query(
-                `INSERT INTO offline_acks (message_id, sender_id, recipient_id, status) VALUES (?, ?, ?, ?, ?)`,
+                `INSERT INTO offline_acks (message_id, sender_id, recipient_id, status, ack_type) VALUES (?, ?, ?, ?, ?)`,
                 [message_id, sender, recipient_id, status, "self"]
             );
 
