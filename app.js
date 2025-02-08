@@ -1721,6 +1721,9 @@ async function handleUndeliveredMessage(socket, data) {
 
         // If recipient is online, broadcast the message status after a delay
         await delay(500); // Ensure delay is wrapped in a promise
+
+        console.log("BROADCASTING");
+
         socket.broadcast.timeout(10000).emit('chat:messageStatus', { sender, recipient_id, message_id, status },
            
             async (err, response) => {
