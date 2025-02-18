@@ -78,6 +78,8 @@ ORDER BY om.created_at ASC;`);
             } catch (error) {
 
 
+                console.log(error);
+
                 if (error.response && error.response.data.error) {
                     const errorCode = error.response.data.error.code;
                     const errorMessage = error.response.data.error.message;
