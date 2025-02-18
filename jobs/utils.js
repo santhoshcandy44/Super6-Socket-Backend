@@ -64,7 +64,7 @@ function decodeFCMToken(text) {
 async function sendFCMNotification(accessToken, fcmToken, type, title, data, message_id) {
 
 
-    const url = 'https://fcm.googleapis.com/v1/projects/pot-app-5cebb/messages:send';
+    const url = 'https://fcm.googleapis.com/v1/projects/lts360/messages:send';
 
 
     const payload = {
