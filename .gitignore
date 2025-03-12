@@ -1,2 +1,4 @@
 node_modules
 .env
+logs
+jobs/service_account.json
