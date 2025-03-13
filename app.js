@@ -540,7 +540,14 @@ io.on('connection', (socket) => {
 
             } = fileData;
 
+            
+            const maxFileSize = 64 * 1024 * 1024;  // 64 MB = 64 * 1024 * 1024 bytes
 
+
+            if(file_size > maxFileSize){
+                callback({ status: "ERROR", recipient_id });
+                return;
+            }
 
             // Check if the recipient is active
             const [rows] = await promise.query('SELECT account_status FROM users WHERE user_id = ?', [recipient_id]);
@@ -627,7 +634,7 @@ io.on('connection', (socket) => {
                 };
 
 
-                callback({ status: "Success" });
+                callback({ status: "SUCCESS" });
 
 
             } else {
@@ -658,7 +665,7 @@ io.on('connection', (socket) => {
 
                 };
 
-                callback({ status: "Success" });
+                callback({ status: "SUCCESS" });
 
             }
 
@@ -792,6 +799,14 @@ io.on('connection', (socket) => {
 
 
 
+            const maxFileSize = 64 * 1024 * 1024;  // 64 MB = 64 * 1024 * 1024 bytes
+
+
+            if(file_size > maxFileSize){
+                callback({ status: "ERROR", recipient_id });
+                return;
+            }
+
             // Check if the recipient is active
             const [rows] = await promise.query('SELECT account_status FROM users WHERE user_id = ?', [recipient_id]);
 
@@ -880,7 +895,7 @@ io.on('connection', (socket) => {
                 };
 
 
-                callback({ status: "Success" });
+                callback({ status: "SUCCESS" });
 
 
             } else {
@@ -913,7 +928,7 @@ io.on('connection', (socket) => {
 
                 };
 
-                callback({ status: "Success" });
+                callback({ status: "SUCCESS" });
 
             }
 
@@ -1115,9 +1130,6 @@ io.on('connection', (socket) => {
         // If recipient is offline
         if (!recipient_user.online) {
             await insert_offline_message();
-
-
-
             return;
         }
 
