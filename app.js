@@ -1766,8 +1766,6 @@ async function handleUndeliveredMessage(socket, data) {
 const PORT = process.env.PORT || 3080;
 
 
-
-
 server.listen(PORT, () => {
     logMessage(`Server is running on http://localhost:${PORT}`);
 });
