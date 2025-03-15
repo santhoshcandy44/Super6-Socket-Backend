@@ -100,7 +100,7 @@ async function runOfflineMessageNotificationJob() {
         }
 
     } catch (error) {
-        console.log(error);
+        console.log("Seomething wrong on running offline message notification job");
     }
 
 }

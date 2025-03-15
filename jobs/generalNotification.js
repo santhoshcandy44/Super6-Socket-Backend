@@ -80,7 +80,7 @@ WHERE n.type = 'welcome'
 
 
     } catch (error) {
-        console.log(error);
+        console.log("Seomething wrong on running general notification job");
     }
 
 }
