@@ -36,6 +36,7 @@ WHERE n.type = 'welcome'
     for (const row of results) {
         try {
 
+            console.log(row);
             const {user_id, notification_id, title, message, fcm_token,type } = row;
         
             if(!fcm_token){
