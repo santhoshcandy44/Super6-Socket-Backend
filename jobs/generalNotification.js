@@ -26,7 +26,7 @@ FROM notifications n
 JOIN users u ON n.user_id = u.user_id
 JOIN fcm_tokens ON u.user_id = fcm_tokens.user_id
 WHERE n.type = 'welcome'                     
-  AND n.created_at <= NOW() - INTERVAL 60 MINUTE
+  AND n.created_at <= NOW() - INTERVAL 5 MINUTE
   AND n.flag = FALSE;`;
 
 

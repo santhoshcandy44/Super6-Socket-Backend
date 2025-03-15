@@ -13,12 +13,10 @@ const cron = require('node-cron');
 const jwt = require('jsonwebtoken');
 const runGeneralNotificationJob = require('./jobs/generalNotification'); // Adjust the path if necessary
 const runOfflineMessagesNotificationJob = require('./jobs/offlineMessagesNotification'); // Adjust the path if necessary
-const { BASE_URL, PROFILE_BASE_URL, MEDIA_ROOT_PATH, MEDIA_BASE_URL, S3_BUCKET_NAME, GL_ACCESS_TOKEN_SECRET } = require('./config/config');
+const { PROFILE_BASE_URL, MEDIA_ROOT_PATH, MEDIA_BASE_URL, GL_ACCESS_TOKEN_SECRET } = require('./config/config');
 
 const { logMessage } = require('./common/utils');
-const { error } = require('console');
 
-const { awsS3Bucket } = require('./config/awsS3')
 
 
 app.get('/', (req, res) => {
@@ -71,7 +69,7 @@ cron.schedule('*/1 * * * * *', async () => {
         await runGeneralNotificationJob();
     } catch (error) {
         isJobRunning = false;
-        console.error('Error running FCM job:', error);
+        console.error('Error running general notification job:', error);
     }
 });
 
@@ -513,8 +511,6 @@ io.on('connection', (socket) => {
 
     // Handle the start of file transfer
     socket.on('chat:startFileTransfer', async (fileData, callback) => {
-
-
 
         try {
 
