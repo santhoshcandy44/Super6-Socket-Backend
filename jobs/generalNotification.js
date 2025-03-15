@@ -80,8 +80,7 @@ WHERE n.type = 'welcome'
 
 
     } catch (error) {
-
-        logMessage(error);
+        console.log(error);
     }
 
 }
