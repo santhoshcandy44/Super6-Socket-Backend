@@ -25,23 +25,22 @@ app.get('/', (req, res) => {
 
 
 // Variable to track if the job is running
-let isJobRunning = false;
+let isOfflineMessagesDeliveryJobRunning = false;
+let isGeneralNotificationJobRunning = false;
 
 // Function to run the job
 async function offlineMessagesDeliveryJob() {
 
-    if (isJobRunning) {
+    if (isOfflineMessagesDeliveryJobRunning) {
         return; // Exit if the job is already running
     }
-    isJobRunning = true;
+    isOfflineMessagesDeliveryJobRunning = true;
 
 
     while (true) {
         try {
             // Your logic for processing offline messages
-            await runOfflineMessagesNotificationJob((messaegBody) => {
-
-            }); // Assume this is your function for processing messages
+            await runOfflineMessagesNotificationJob(); // Assume this is your function for processing messages
         } catch (error) {
             console.error('Error running OfflineMessage job:', error);
             throw error;
@@ -53,12 +52,34 @@ async function offlineMessagesDeliveryJob() {
 }
 
 
-//Schedule the FCM job to run every 2 seconds
+async function generalNotificationDeliveryJob() {
+
+    if (isGeneralNotificationJobRunning) {
+        return; // Exit if the job is already running
+    }
+    isGeneralNotificationJobRunning = true;
+
+
+    while (true) {
+        try {
+            // Your logic for processing offline messages
+            await runGeneralNotificationJob(); // Assume this is your function for processing messages
+        } catch (error) {
+            console.error('Error running OfflineMessage job:', error);
+            throw error;
+
+        }
+
+    }
+
+}
+
+
 cron.schedule('*/1 * * * * *', async () => {
     try {
         await offlineMessagesDeliveryJob();
     } catch (error) {
-        isJobRunning = false;
+        isOfflineMessagesDeliveryJobRunning = false;
         console.error('Error running FCM job:', error);
     }
 });
@@ -66,9 +87,9 @@ cron.schedule('*/1 * * * * *', async () => {
 
 cron.schedule('*/1 * * * * *', async () => {
     try {
-        await runGeneralNotificationJob();
+        await generalNotificationDeliveryJob();
     } catch (error) {
-        isJobRunning = false;
+        isGeneralNotificationJobRunning = false;
         console.error('Error running general notification job:', error);
     }
 });

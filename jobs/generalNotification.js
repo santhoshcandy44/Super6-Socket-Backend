@@ -36,6 +36,7 @@ WHERE n.type = 'welcome'
     for (const row of results) {
         try {
 
+            console.log(row);
             const {user_id, notification_id, title, message, fcm_token,type } = row;
         
             if(!fcm_token){
@@ -46,6 +47,7 @@ WHERE n.type = 'welcome'
             await sendFCMNotification(accessToken, decodedFCMToken, "general", title, JSON.stringify(
                 {message,
                  type }), -1);
+                 console.log("Sent");
 
             const deleteQuery = "DELETE FROM notifications WHERE id = ?";
             promise.query(deleteQuery, [notification_id], (err) => {
